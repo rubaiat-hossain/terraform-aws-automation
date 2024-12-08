@@ -93,7 +93,7 @@ data "aws_ami" "ubuntu_ami" {
 }
 
 # EC2 Instance Setup
-resource "aws_instance" "ubuntu_instance" {
+resource "aws_instance" "node1" {
   ami                         = data.aws_ami.ubuntu_ami.id
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.tf_key.key_name
@@ -102,17 +102,17 @@ resource "aws_instance" "ubuntu_instance" {
   subnet_id                   = aws_subnet.main_subnet.id
 
   tags = {
-    Name = "ubuntu-instance"
+    Name = "node1"
   }
 }
 
 # Output IPs
 output "instance_private_ip" {
-  value = aws_instance.ubuntu_instance.private_ip
+  value = aws_instance.node1.private_ip
 }
 
 output "instance_public_ip" {
-  value = aws_instance.ubuntu_instance.public_ip
+  value = aws_instance.node1.public_ip
 }
 
 # Output Key Pair Path
