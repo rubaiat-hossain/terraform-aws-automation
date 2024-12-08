@@ -92,7 +92,7 @@ data "aws_ami" "ubuntu_ami" {
   owners = ["099720109477"]
 }
 
-# EC2 Instance Setup
+# EC2 Instance Setup - Node1
 resource "aws_instance" "node1" {
   ami                         = data.aws_ami.ubuntu_ami.id
   instance_type               = "t2.micro"
@@ -106,13 +106,36 @@ resource "aws_instance" "node1" {
   }
 }
 
-# Output IPs
-output "instance_private_ip" {
+# EC2 Instance Setup - Node2 (Minimal Change)
+resource "aws_instance" "node2" {
+  ami                         = data.aws_ami.ubuntu_ami.id
+  instance_type               = "t2.micro"
+  key_name                    = aws_key_pair.tf_key.key_name
+  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
+  associate_public_ip_address = true
+  subnet_id                   = aws_subnet.main_subnet.id
+
+  tags = {
+    Name = "node2"
+  }
+}
+
+# Output IPs for node1
+output "instance_private_ip_node1" {
   value = aws_instance.node1.private_ip
 }
 
-output "instance_public_ip" {
+output "instance_public_ip_node1" {
   value = aws_instance.node1.public_ip
+}
+
+# Output IPs for node2
+output "instance_private_ip_node2" {
+  value = aws_instance.node2.private_ip
+}
+
+output "instance_public_ip_node2" {
+  value = aws_instance.node2.public_ip
 }
 
 # Output Key Pair Path
