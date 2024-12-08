@@ -27,11 +27,18 @@ resource "aws_vpc" "main_vpc" {
   }
 }
 
-# Subnet Setup
+# Subnet Setup for Node1 (Availability Zone: us-east-1a)
 resource "aws_subnet" "main_subnet" {
   cidr_block        = "10.0.1.0/24"
   vpc_id            = aws_vpc.main_vpc.id
   availability_zone = "us-east-1a"
+}
+
+# Subnet Setup for Node2 (Availability Zone: us-east-1b)
+resource "aws_subnet" "main_subnet_node2" {
+  cidr_block        = "10.0.2.0/24"
+  vpc_id            = aws_vpc.main_vpc.id
+  availability_zone = "us-east-1b"  # Change availability zone for node2
 }
 
 # Security Group Setup
@@ -70,8 +77,15 @@ resource "aws_route_table" "main_route_table" {
   }
 }
 
+# Route Table Association for Node1's Subnet (us-east-1a)
 resource "aws_route_table_association" "subnet_association" {
   subnet_id      = aws_subnet.main_subnet.id
+  route_table_id = aws_route_table.main_route_table.id
+}
+
+# Route Table Association for Node2's Subnet (us-east-1b) - Add this to ensure node2 is in the route
+resource "aws_route_table_association" "subnet_association_node2" {
+  subnet_id      = aws_subnet.main_subnet_node2.id
   route_table_id = aws_route_table.main_route_table.id
 }
 
@@ -92,28 +106,28 @@ data "aws_ami" "ubuntu_ami" {
   owners = ["099720109477"]
 }
 
-# EC2 Instance Setup - Node1
+# EC2 Instance Setup - Node1 (In us-east-1a)
 resource "aws_instance" "node1" {
   ami                         = data.aws_ami.ubuntu_ami.id
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.tf_key.key_name
   vpc_security_group_ids      = [aws_security_group.allow_ssh.id]  # Use vpc_security_group_ids instead of security_groups
   associate_public_ip_address = true
-  subnet_id                   = aws_subnet.main_subnet.id
+  subnet_id                   = aws_subnet.main_subnet.id  # Use the subnet from us-east-1a
 
   tags = {
     Name = "node1"
   }
 }
 
-# EC2 Instance Setup - Node2 (Minimal Change)
+# EC2 Instance Setup - Node2 (In us-east-1b)
 resource "aws_instance" "node2" {
   ami                         = data.aws_ami.ubuntu_ami.id
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.tf_key.key_name
   vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
   associate_public_ip_address = true
-  subnet_id                   = aws_subnet.main_subnet.id
+  subnet_id                   = aws_subnet.main_subnet_node2.id  # Use the subnet from us-east-1b
 
   tags = {
     Name = "node2"
