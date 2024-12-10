@@ -22,14 +22,14 @@ resource "aws_key_pair" "tf_key_node2" {
 resource "local_file" "tf_key" {
   provider = local
   content  = tls_private_key.rsa.private_key_pem
-  filename = "my-key-pair.pem"  # You can specify a different filename if needed
+  filename = "my-key-pair.pem"
 }
 
 # Save Private Key to Local File for Node2
 resource "local_file" "tf_key_node2" {
   provider = local
   content  = tls_private_key.rsa.private_key_pem
-  filename = "my-key-pair-node2.pem"  # A different file for node2, if needed
+  filename = "my-key-pair-node2.pem"
 }
 
 # VPC Setup for Node1 (In us-east-1)
@@ -42,10 +42,9 @@ resource "aws_vpc" "main_vpc" {
   tags = {
     Name = "main_vpc"
   }
- 
 }
 
-# Subnet Setup for Node1 (Availability Zone: us-east-1a)
+# Subnet Setup for Node1 (In us-east-1a)
 resource "aws_subnet" "main_subnet" {
   provider = aws.east
   cidr_block        = "10.0.1.0/24"
@@ -166,7 +165,7 @@ resource "aws_instance" "node1" {
 # VPC Setup for Node2 (In us-west-1)
 resource "aws_vpc" "main_vpc_node2" {
   provider = aws.west
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = "10.1.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
 
@@ -178,7 +177,7 @@ resource "aws_vpc" "main_vpc_node2" {
 # Subnet Setup for Node2 (In us-west-1)
 resource "aws_subnet" "main_subnet_node2" {
   provider = aws.west
-  cidr_block        = "10.0.1.0/24"
+  cidr_block        = "10.1.1.0/24"
   vpc_id            = aws_vpc.main_vpc_node2.id
   availability_zone = "us-west-1a"
 
@@ -293,22 +292,47 @@ resource "aws_instance" "node2" {
   ]
 }
 
-# Output for Key Pair & Instance IP
-output "instance_public_ip_node1" {
+# VPC Peering Connection from Node1 to Node2 (Requester)
+resource "aws_vpc_peering_connection" "vpc_peering_connection" {
+  provider = aws.east
+  vpc_id = aws_vpc.main_vpc.id
+  peer_vpc_id = aws_vpc.main_vpc_node2.id
+  peer_region = "us-west-1"
+
+  auto_accept = false
+
+  tags = {
+    Name = "vpc-peering-connection"
+  }
+}
+
+# VPC Peering Connection Accepter (Node2)
+resource "aws_vpc_peering_connection_accepter" "accepter" {
+  provider = aws.west
+  vpc_peering_connection_id = aws_vpc_peering_connection.vpc_peering_connection.id
+  auto_accept               = true
+
+  tags = {
+    Name = "vpc-peering-connection-accepter"
+  }
+}
+
+# Output EC2 Instance Public IP for Node1
+output "node1_public_ip" {
   value = aws_instance.node1.public_ip
 }
 
-output "instance_public_ip_node2" {
+# Output EC2 Instance Public IP for Node2
+output "node2_public_ip" {
   value = aws_instance.node2.public_ip
 }
 
-
-# Output Key Pair Path
-output "key_pair_path_node1" {
-  value = local_file.tf_key.filename
+# Output Key Pair Name for Node1
+output "node1_key_name" {
+  value = aws_key_pair.tf_key.key_name
 }
 
-output "key_pair_path_node2" {
-  value = local_file.tf_key_node2.filename
+# Output Key Pair Name for Node2
+output "node2_key_name" {
+  value = aws_key_pair.tf_key_node2.key_name
 }
-
