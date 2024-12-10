@@ -144,7 +144,7 @@ resource "aws_instance" "node1" {
   ami                         = data.aws_ami.ubuntu_ami.id
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.tf_key.key_name
-  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
+  vpc_security_group_ids      = [aws_security_group.allow_ssh_icmp_node1.id]  # Updated to include ICMP security group
   associate_public_ip_address = true
   subnet_id                   = aws_subnet.main_subnet.id
 
@@ -156,11 +156,12 @@ resource "aws_instance" "node1" {
     aws_key_pair.tf_key,
     aws_vpc.main_vpc,
     aws_subnet.main_subnet,
-    aws_security_group.allow_ssh,
+    aws_security_group.allow_ssh_icmp_node1,  # Ensure the ICMP SG is created first
     aws_internet_gateway.main_gw,
     aws_route_table.main_route_table
   ]
 }
+
 
 # VPC Setup for Node2 (In us-west-1)
 resource "aws_vpc" "main_vpc_node2" {
@@ -274,7 +275,7 @@ resource "aws_instance" "node2" {
   ami                         = data.aws_ami.ubuntu_ami_node2.id
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.tf_key_node2.key_name
-  vpc_security_group_ids      = [aws_security_group.allow_ssh_node2.id]
+  vpc_security_group_ids      = [aws_security_group.allow_ssh_icmp_node2.id]  # Updated to include ICMP security group
   associate_public_ip_address = true
   subnet_id                   = aws_subnet.main_subnet_node2.id
 
@@ -286,11 +287,12 @@ resource "aws_instance" "node2" {
     aws_key_pair.tf_key_node2,
     aws_vpc.main_vpc_node2,
     aws_subnet.main_subnet_node2,
-    aws_security_group.allow_ssh_node2,
+    aws_security_group.allow_ssh_icmp_node2,  # Ensure the ICMP SG is created first
     aws_internet_gateway.main_gw_node2,
     aws_route_table.main_route_table_node2
   ]
 }
+
 
 # VPC Peering Connection from Node1 to Node2 (Requester)
 resource "aws_vpc_peering_connection" "vpc_peering_connection" {
@@ -315,6 +317,101 @@ resource "aws_vpc_peering_connection_accepter" "accepter" {
   tags = {
     Name = "vpc-peering-connection-accepter"
   }
+}
+
+# Route for Node1 to Node2 through Peering
+resource "aws_route" "node1_to_node2" {
+  provider            = aws.east
+  route_table_id      = aws_route_table.main_route_table.id
+  destination_cidr_block = aws_vpc.main_vpc_node2.cidr_block
+  vpc_peering_connection_id = aws_vpc_peering_connection.vpc_peering_connection.id
+}
+
+# Route for Node2 to Node1 through Peering
+resource "aws_route" "node2_to_node1" {
+  provider            = aws.west
+  route_table_id      = aws_route_table.main_route_table_node2.id
+  destination_cidr_block = aws_vpc.main_vpc.cidr_block
+  vpc_peering_connection_id = aws_vpc_peering_connection.vpc_peering_connection.id
+}
+
+# Security Group for Node1 allowing ICMP to Node2
+resource "aws_security_group" "allow_ssh_icmp_node1" {
+  provider   = aws.east
+  name       = "allow-ssh-icmp-node1"
+  description = "Allow SSH and ICMP inbound traffic"
+  vpc_id     = aws_vpc.main_vpc.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = -1
+    to_port     = -1
+    protocol    = "icmp"
+    cidr_blocks = ["10.1.1.0/24"]  # Node2 subnet CIDR block
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  depends_on = [
+    aws_vpc.main_vpc
+  ]
+}
+
+# Security Group for Node2 allowing ICMP to Node1
+resource "aws_security_group" "allow_ssh_icmp_node2" {
+  provider   = aws.west
+  name       = "allow-ssh-icmp-node2"
+  description = "Allow SSH and ICMP inbound traffic"
+  vpc_id     = aws_vpc.main_vpc_node2.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = -1
+    to_port     = -1
+    protocol    = "icmp"
+    cidr_blocks = ["10.0.1.0/24"]  # Node1 subnet CIDR block
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  depends_on = [
+    aws_vpc.main_vpc_node2
+  ]
+}
+
+
+# Output for Node1's private IP
+output "node1_private_ip" {
+  value = aws_instance.node1.private_ip
+  description = "Private IP address of Node1"
+}
+
+# Output for Node2's private IP
+output "node2_private_ip" {
+  value = aws_instance.node2.private_ip
+  description = "Private IP address of Node2"
 }
 
 # Output EC2 Instance Public IP for Node1
