@@ -42,6 +42,7 @@ resource "aws_vpc" "main_vpc" {
   tags = {
     Name = "main_vpc"
   }
+ 
 }
 
 # Subnet Setup for Node1 (Availability Zone: us-east-1a)
@@ -50,6 +51,10 @@ resource "aws_subnet" "main_subnet" {
   cidr_block        = "10.0.1.0/24"
   vpc_id            = aws_vpc.main_vpc.id
   availability_zone = "us-east-1a"
+
+  depends_on = [
+    aws_vpc.main_vpc
+  ]
 }
 
 # Security Group Setup for Node1 (In us-east-1)
@@ -72,12 +77,20 @@ resource "aws_security_group" "allow_ssh" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  depends_on = [
+    aws_vpc.main_vpc
+  ]
 }
 
 # Internet Gateway Setup for Node1 (In us-east-1)
 resource "aws_internet_gateway" "main_gw" {
   provider = aws.east
   vpc_id = aws_vpc.main_vpc.id
+
+  depends_on = [
+    aws_vpc.main_vpc
+  ]
 }
 
 # Route Table Setup for Node1 (In us-east-1)
@@ -89,6 +102,11 @@ resource "aws_route_table" "main_route_table" {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main_gw.id
   }
+
+  depends_on = [
+    aws_internet_gateway.main_gw,
+    aws_vpc.main_vpc
+  ]
 }
 
 # Route Table Association for Node1's Subnet (us-east-1a)
@@ -96,6 +114,11 @@ resource "aws_route_table_association" "subnet_association" {
   provider      = aws.east
   subnet_id     = aws_subnet.main_subnet.id
   route_table_id = aws_route_table.main_route_table.id
+
+  depends_on = [
+    aws_route_table.main_route_table,
+    aws_subnet.main_subnet
+  ]
 }
 
 # AMI Data Lookup for Node1 (In us-east-1)
@@ -129,6 +152,15 @@ resource "aws_instance" "node1" {
   tags = {
     Name = "node1"
   }
+
+  depends_on = [
+    aws_key_pair.tf_key,
+    aws_vpc.main_vpc,
+    aws_subnet.main_subnet,
+    aws_security_group.allow_ssh,
+    aws_internet_gateway.main_gw,
+    aws_route_table.main_route_table
+  ]
 }
 
 # VPC Setup for Node2 (In us-west-1)
@@ -149,6 +181,10 @@ resource "aws_subnet" "main_subnet_node2" {
   cidr_block        = "10.0.1.0/24"
   vpc_id            = aws_vpc.main_vpc_node2.id
   availability_zone = "us-west-1a"
+
+  depends_on = [
+    aws_vpc.main_vpc_node2
+  ]
 }
 
 # Security Group Setup for Node2 (In us-west-1)
@@ -171,12 +207,20 @@ resource "aws_security_group" "allow_ssh_node2" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  depends_on = [
+    aws_vpc.main_vpc_node2
+  ]
 }
 
 # Internet Gateway Setup for Node2 (In us-west-1)
 resource "aws_internet_gateway" "main_gw_node2" {
   provider = aws.west
   vpc_id = aws_vpc.main_vpc_node2.id
+
+  depends_on = [
+    aws_vpc.main_vpc_node2
+  ]
 }
 
 # Route Table Setup for Node2 (In us-west-1)
@@ -188,6 +232,11 @@ resource "aws_route_table" "main_route_table_node2" {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main_gw_node2.id
   }
+
+  depends_on = [
+    aws_internet_gateway.main_gw_node2,
+    aws_vpc.main_vpc_node2
+  ]
 }
 
 # Route Table Association for Node2's Subnet (us-west-1a)
@@ -195,6 +244,11 @@ resource "aws_route_table_association" "subnet_association_node2" {
   provider      = aws.west
   subnet_id     = aws_subnet.main_subnet_node2.id
   route_table_id = aws_route_table.main_route_table_node2.id
+
+  depends_on = [
+    aws_route_table.main_route_table_node2,
+    aws_subnet.main_subnet_node2
+  ]
 }
 
 # AMI Data Lookup for Node2 (In us-west-1)
@@ -220,7 +274,7 @@ resource "aws_instance" "node2" {
   provider                    = aws.west
   ami                         = data.aws_ami.ubuntu_ami_node2.id
   instance_type               = "t2.micro"
-  key_name                    = aws_key_pair.tf_key_node2.key_name  # Use the key pair for node2
+  key_name                    = aws_key_pair.tf_key_node2.key_name
   vpc_security_group_ids      = [aws_security_group.allow_ssh_node2.id]
   associate_public_ip_address = true
   subnet_id                   = aws_subnet.main_subnet_node2.id
@@ -228,32 +282,33 @@ resource "aws_instance" "node2" {
   tags = {
     Name = "node2"
   }
+
+  depends_on = [
+    aws_key_pair.tf_key_node2,
+    aws_vpc.main_vpc_node2,
+    aws_subnet.main_subnet_node2,
+    aws_security_group.allow_ssh_node2,
+    aws_internet_gateway.main_gw_node2,
+    aws_route_table.main_route_table_node2
+  ]
 }
 
-# Output IPs for node1
-output "instance_private_ip_node1" {
-  value = aws_instance.node1.private_ip
-}
-
+# Output for Key Pair & Instance IP
 output "instance_public_ip_node1" {
   value = aws_instance.node1.public_ip
-}
-
-# Output IPs for node2
-output "instance_private_ip_node2" {
-  value = aws_instance.node2.private_ip
 }
 
 output "instance_public_ip_node2" {
   value = aws_instance.node2.public_ip
 }
 
+
 # Output Key Pair Path
-output "key_pair_file" {
+output "key_pair_path_node1" {
   value = local_file.tf_key.filename
 }
 
-# Output Key Pair Path for Node2
-output "key_pair_file_node2" {
+output "key_pair_path_node2" {
   value = local_file.tf_key_node2.filename
 }
+
