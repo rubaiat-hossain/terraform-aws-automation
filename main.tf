@@ -4,20 +4,37 @@ resource "tls_private_key" "rsa" {
   rsa_bits  = 4096
 }
 
-# Key Pair Setup
+# Key Pair Setup for Node1 (In us-east-1)
 resource "aws_key_pair" "tf_key" {
+  provider   = aws.east
   key_name   = "my-key-pair"
   public_key = tls_private_key.rsa.public_key_openssh
 }
 
-# Save Private Key to Local File
+# Key Pair Setup for Node2 (In us-west-1)
+resource "aws_key_pair" "tf_key_node2" {
+  provider   = aws.west
+  key_name   = "my-key-pair-node2"
+  public_key = tls_private_key.rsa.public_key_openssh
+}
+
+# Save Private Key to Local File for Node1
 resource "local_file" "tf_key" {
+  provider = local
   content  = tls_private_key.rsa.private_key_pem
   filename = "my-key-pair.pem"  # You can specify a different filename if needed
 }
 
-# VPC Setup
+# Save Private Key to Local File for Node2
+resource "local_file" "tf_key_node2" {
+  provider = local
+  content  = tls_private_key.rsa.private_key_pem
+  filename = "my-key-pair-node2.pem"  # A different file for node2, if needed
+}
+
+# VPC Setup for Node1 (In us-east-1)
 resource "aws_vpc" "main_vpc" {
+  provider = aws.east
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
@@ -29,23 +46,18 @@ resource "aws_vpc" "main_vpc" {
 
 # Subnet Setup for Node1 (Availability Zone: us-east-1a)
 resource "aws_subnet" "main_subnet" {
+  provider = aws.east
   cidr_block        = "10.0.1.0/24"
   vpc_id            = aws_vpc.main_vpc.id
   availability_zone = "us-east-1a"
 }
 
-# Subnet Setup for Node2 (Availability Zone: us-east-1b)
-resource "aws_subnet" "main_subnet_node2" {
-  cidr_block        = "10.0.2.0/24"
-  vpc_id            = aws_vpc.main_vpc.id
-  availability_zone = "us-east-1b"  # Change availability zone for node2
-}
-
-# Security Group Setup
+# Security Group Setup for Node1 (In us-east-1)
 resource "aws_security_group" "allow_ssh" {
-  name        = "allow-ssh"
+  provider   = aws.east
+  name       = "allow-ssh"
   description = "Allow SSH inbound traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id     = aws_vpc.main_vpc.id
 
   ingress {
     from_port   = 22
@@ -62,13 +74,15 @@ resource "aws_security_group" "allow_ssh" {
   }
 }
 
-# Internet Gateway Setup
+# Internet Gateway Setup for Node1 (In us-east-1)
 resource "aws_internet_gateway" "main_gw" {
+  provider = aws.east
   vpc_id = aws_vpc.main_vpc.id
 }
 
-# Route Table Setup
+# Route Table Setup for Node1 (In us-east-1)
 resource "aws_route_table" "main_route_table" {
+  provider = aws.east
   vpc_id = aws_vpc.main_vpc.id
 
   route {
@@ -79,18 +93,14 @@ resource "aws_route_table" "main_route_table" {
 
 # Route Table Association for Node1's Subnet (us-east-1a)
 resource "aws_route_table_association" "subnet_association" {
-  subnet_id      = aws_subnet.main_subnet.id
+  provider      = aws.east
+  subnet_id     = aws_subnet.main_subnet.id
   route_table_id = aws_route_table.main_route_table.id
 }
 
-# Route Table Association for Node2's Subnet (us-east-1b) - Add this to ensure node2 is in the route
-resource "aws_route_table_association" "subnet_association_node2" {
-  subnet_id      = aws_subnet.main_subnet_node2.id
-  route_table_id = aws_route_table.main_route_table.id
-}
-
-# AMI Data Lookup
+# AMI Data Lookup for Node1 (In us-east-1)
 data "aws_ami" "ubuntu_ami" {
+  provider = aws.east
   most_recent = true
 
   filter {
@@ -108,26 +118,112 @@ data "aws_ami" "ubuntu_ami" {
 
 # EC2 Instance Setup - Node1 (In us-east-1a)
 resource "aws_instance" "node1" {
+  provider                    = aws.east
   ami                         = data.aws_ami.ubuntu_ami.id
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.tf_key.key_name
-  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]  # Use vpc_security_group_ids instead of security_groups
+  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
   associate_public_ip_address = true
-  subnet_id                   = aws_subnet.main_subnet.id  # Use the subnet from us-east-1a
+  subnet_id                   = aws_subnet.main_subnet.id
 
   tags = {
     Name = "node1"
   }
 }
 
-# EC2 Instance Setup - Node2 (In us-east-1b)
+# VPC Setup for Node2 (In us-west-1)
+resource "aws_vpc" "main_vpc_node2" {
+  provider = aws.west
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name = "main_vpc_node2"
+  }
+}
+
+# Subnet Setup for Node2 (In us-west-1)
+resource "aws_subnet" "main_subnet_node2" {
+  provider = aws.west
+  cidr_block        = "10.0.1.0/24"
+  vpc_id            = aws_vpc.main_vpc_node2.id
+  availability_zone = "us-west-1a"
+}
+
+# Security Group Setup for Node2 (In us-west-1)
+resource "aws_security_group" "allow_ssh_node2" {
+  provider   = aws.west
+  name       = "allow-ssh-node2"
+  description = "Allow SSH inbound traffic"
+  vpc_id     = aws_vpc.main_vpc_node2.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Internet Gateway Setup for Node2 (In us-west-1)
+resource "aws_internet_gateway" "main_gw_node2" {
+  provider = aws.west
+  vpc_id = aws_vpc.main_vpc_node2.id
+}
+
+# Route Table Setup for Node2 (In us-west-1)
+resource "aws_route_table" "main_route_table_node2" {
+  provider = aws.west
+  vpc_id = aws_vpc.main_vpc_node2.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main_gw_node2.id
+  }
+}
+
+# Route Table Association for Node2's Subnet (us-west-1a)
+resource "aws_route_table_association" "subnet_association_node2" {
+  provider      = aws.west
+  subnet_id     = aws_subnet.main_subnet_node2.id
+  route_table_id = aws_route_table.main_route_table_node2.id
+}
+
+# AMI Data Lookup for Node2 (In us-west-1)
+data "aws_ami" "ubuntu_ami_node2" {
+  provider = aws.west
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"]
+}
+
+# EC2 Instance Setup - Node2 (In us-west-1a)
 resource "aws_instance" "node2" {
-  ami                         = data.aws_ami.ubuntu_ami.id
+  provider                    = aws.west
+  ami                         = data.aws_ami.ubuntu_ami_node2.id
   instance_type               = "t2.micro"
-  key_name                    = aws_key_pair.tf_key.key_name
-  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
+  key_name                    = aws_key_pair.tf_key_node2.key_name  # Use the key pair for node2
+  vpc_security_group_ids      = [aws_security_group.allow_ssh_node2.id]
   associate_public_ip_address = true
-  subnet_id                   = aws_subnet.main_subnet_node2.id  # Use the subnet from us-east-1b
+  subnet_id                   = aws_subnet.main_subnet_node2.id
 
   tags = {
     Name = "node2"
@@ -155,4 +251,9 @@ output "instance_public_ip_node2" {
 # Output Key Pair Path
 output "key_pair_file" {
   value = local_file.tf_key.filename
+}
+
+# Output Key Pair Path for Node2
+output "key_pair_file_node2" {
+  value = local_file.tf_key_node2.filename
 }
