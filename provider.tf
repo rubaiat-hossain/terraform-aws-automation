@@ -10,13 +10,13 @@ terraform {
   }
 }
 
-# Configure the AWS Provider for us-east-1 (Node1 region)
+# Configure the AWS Provider for us-east-1 (node1 region)
 provider "aws" {
   alias  = "east"
   region = "us-east-1"
 }
 
-# Configure the AWS Provider for us-west-1 (Node2 region)
+# Configure the AWS Provider for us-west-1 (node2 region)
 provider "aws" {
   alias  = "west"
   region = "us-west-1"
